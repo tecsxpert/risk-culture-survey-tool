@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify
 from services.input_sanitizer import validate_request
+from routes.categorise import categorise_bp   # 👈 NEW
 
 app = Flask(__name__)
 
-# 🔐 Middleware (runs before every request)
+# 👇 Register teammate route
+app.register_blueprint(categorise_bp)
+
 @app.before_request
 def check_input():
     if request.method in ["POST", "PUT"]:
@@ -11,16 +14,10 @@ def check_input():
         if error:
             return error
 
-
-# 🏠 Home route (to avoid 404)
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
-        "message": "AI Service is running successfully 🚀"
-    })
+    return jsonify({"message": "AI Service is running successfully 🚀"})
 
-
-# 🧪 Test route (for testing sanitisation)
 @app.route("/test", methods=["POST"])
 def test():
     data = request.get_json()
@@ -29,7 +26,5 @@ def test():
         "cleaned_data": data
     })
 
-
-# ▶️ Run the app
 if __name__ == "__main__":
     app.run(debug=True)
