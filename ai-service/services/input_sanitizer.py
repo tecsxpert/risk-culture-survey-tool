@@ -13,7 +13,7 @@ BLOCKED_PATTERNS = [
 
 def sanitize_input(text: str) -> str:
     """Remove HTML tags and trim spaces"""
-    text = re.sub(r"<.*?>", "", text)  # remove HTML
+    text = re.sub(r"<.*?>", "", text)
     return text.strip()
 
 def is_malicious(text: str) -> bool:
@@ -24,21 +24,27 @@ def is_malicious(text: str) -> bool:
 def validate_request():
     data = request.get_json(silent=True)
 
-    if not data:
-        return jsonify({"error": "Invalid or empty request"}), 400
+    # ✅ FIX 1: Ensure data is valid JSON object
+    if not data or not isinstance(data, dict):
+        return jsonify({
+            "error": "Invalid input",
+            "message": "JSON object expected"
+        }), 400
 
-    for key in data:
-        value = data[key]
+    # ✅ FIX 2: Safe iteration
+    for key, value in data.items():
 
         if isinstance(value, str):
             cleaned = sanitize_input(value)
 
+            # ✅ Detect malicious input
             if is_malicious(cleaned):
                 return jsonify({
                     "error": "Malicious input detected",
                     "field": key
                 }), 400
 
+            # ✅ Replace with cleaned value
             data[key] = cleaned
 
     return None
