@@ -1,9 +1,8 @@
 from flask import Blueprint, request, jsonify
 from datetime import datetime
+import json
 
 from services.ai_client import categorize_text
-import json
-import re
 
 categorise_bp = Blueprint('categorise', __name__)
 
@@ -54,15 +53,8 @@ def categorise():
     try:
         ai_response = categorize_text(text)
 
-        print("AI RESPONSE RECEIVED:", ai_response)  # 👈 debug
-
-        # 🔥 Extract JSON safely
-        json_match = re.search(r"\{.*\}", ai_response, re.DOTALL)
-
-        if json_match:
-            result = json.loads(json_match.group())
-        else:
-            raise ValueError("Invalid AI response format")
+        # ✅ Direct JSON parsing (since mock returns clean JSON)
+        result = json.loads(ai_response)
 
         return jsonify({
             **result,
@@ -70,9 +62,8 @@ def categorise():
             "is_fallback": False
         })
 
-    except Exception as e:
-        print("ERROR:", str(e))  # 👈 debug
-
+    except Exception:
+        # ✅ Safe fallback (no sensitive logging)
         return jsonify({
             "category": "unknown",
             "confidence": 0.5,
