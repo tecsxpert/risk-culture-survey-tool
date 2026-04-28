@@ -3,11 +3,8 @@ package tool.controller;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.Valid;
 import tool.dto.UserRequest;
@@ -21,8 +18,9 @@ public class UserController {
     @Autowired
     private UserService userService;
 
-    // CREATE USER
+    // ✅ ADMIN ONLY
     @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public User createUser(@Valid @RequestBody UserRequest request) {
 
         User user = new User();
@@ -32,8 +30,9 @@ public class UserController {
         return userService.saveUser(user);
     }
 
-    // GET USERS
+    // ✅ ADMIN + MANAGER CAN VIEW USERS
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public List<User> getUsers() {
         return userService.getAllUsers();
     }
