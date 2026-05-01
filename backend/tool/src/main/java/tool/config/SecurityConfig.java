@@ -27,14 +27,20 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+
+                // public
                 .requestMatchers("/auth/**").permitAll()
+
+                // TASK ACCESS CONTROL
+                .requestMatchers("/tasks/export").hasAnyRole("ADMIN", "MANAGER")
+                .requestMatchers("/tasks").hasAnyRole("ADMIN", "MANAGER", "VIEWER")
+
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
-
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

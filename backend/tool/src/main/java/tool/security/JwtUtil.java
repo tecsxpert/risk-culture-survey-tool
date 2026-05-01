@@ -28,7 +28,7 @@ public class JwtUtil {
         String role = userDetails.getAuthorities()
                 .stream()
                 .findFirst()
-                .map(Object::toString)
+                .map(auth -> auth.getAuthority())
                 .orElse("ROLE_VIEWER");
 
         claims.put("role", role);

@@ -20,7 +20,7 @@ public class UserController {
         this.userService = userService;
     }
 
-    // ADMIN ONLY
+    // ADMIN ONLY - create user
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public User createUser(@Valid @RequestBody UserRequest request) {
@@ -32,7 +32,7 @@ public class UserController {
         return userService.saveUser(user);
     }
 
-    // ADMIN + MANAGER
+    // ADMIN + MANAGER - get users
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
     public List<User> getUsers() {
