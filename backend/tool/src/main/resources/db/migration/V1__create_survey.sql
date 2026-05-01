@@ -1,3 +1,6 @@
+-- Enable UUID generation (REQUIRED for gen_random_uuid)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TABLE survey (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -15,6 +18,11 @@ CREATE TABLE survey (
     is_deleted BOOLEAN DEFAULT FALSE
 );
 
--- Indexes (VERY IMPORTANT)
-CREATE INDEX idx_status ON survey(status);
-CREATE INDEX idx_created_at ON survey(created_at);
+-- =========================
+-- INDEXES (Performance)
+-- =========================
+CREATE INDEX idx_survey_status
+ON survey(status);
+
+CREATE INDEX idx_survey_created_at
+ON survey(created_at);
