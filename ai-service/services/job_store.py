@@ -10,7 +10,6 @@ STATUS_PENDING    = "pending"
 STATUS_PROCESSING = "processing"
 STATUS_COMPLETE   = "complete"
 STATUS_FAILED     = "failed"
-
 class JobStore:
     """
     Thread-safe in-memory store for async job tracking.
