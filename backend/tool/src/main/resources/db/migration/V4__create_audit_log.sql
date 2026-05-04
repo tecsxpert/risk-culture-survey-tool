@@ -1,10 +1,12 @@
+DROP TABLE IF EXISTS audit_log;
+
 CREATE TABLE audit_log (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     entity_name VARCHAR(100),
     entity_id BIGINT,
     action VARCHAR(20),
     old_value JSONB,
     new_value JSONB,
     username VARCHAR(100),
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
