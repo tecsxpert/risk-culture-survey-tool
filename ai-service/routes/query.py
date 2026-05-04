@@ -3,12 +3,11 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from services.groq_client import groq_client
 from services.chroma_client import chroma_client
-from services.cache_service import cache_service        
-from routes.health import record_response_time          
-from routes.health import record_cache_hit              
-from routes.health import record_cache_miss            
+from services.cache_service import cache_service
+from services.fallback_service import fallback_service
+from services.tracker import record_response_time
 
-logger = logging.getLogger("query")
+logger   = logging.getLogger("query")
 query_bp = Blueprint("query", __name__)
 TOP_K    = 3
 
@@ -38,12 +37,13 @@ def format_sources(chunks):
         "category": c["metadata"].get("category", "General"),
         "source":   c["metadata"].get("source", "knowledge base"),
         "score":    c["score"],
-        "preview":  c["text"][:150] + "..." if len(c["text"]) > 150 else c["text"]
+        "preview":  c["text"][:150] + "..."
+                    if len(c["text"]) > 150 else c["text"]
     } for c in chunks]
 
 @query_bp.route("/query", methods=["POST"])
 def query():
-    # 1. Validate input
+    # 1. Validate input 
     data = request.get_json(silent=True)
     if not data:
         return jsonify({
@@ -52,20 +52,18 @@ def query():
         }), 400
 
     question   = data.get("question", "").strip()
-    skip_cache = data.get("skip_cache", False)          
+    skip_cache = data.get("skip_cache", False)
 
     if not question:
         return jsonify({
             "error": "Field 'question' is required",
             "code":  "MISSING_QUESTION"
         }), 400
-
     if len(question) < 10:
         return jsonify({
             "error": "Field 'question' must be at least 10 characters",
             "code":  "QUESTION_TOO_SHORT"
         }), 400
-
     if len(question) > 2000:
         return jsonify({
             "error": "Field 'question' must not exceed 2000 characters",
@@ -73,30 +71,27 @@ def query():
         }), 400
 
     # 2. Check cache 
-    cache_key    = cache_service.make_key("query", question)   
-    cached_value = None                                         
+    cache_key = cache_service.make_key("query", question)
 
-    if not skip_cache:                                         
-        cached_value = cache_service.get(cache_key)          
-        if cached_value:                                        
-            record_cache_hit()                                 
-            logger.info("Returning cached query response")      
-            cached_value["from_cache"] = True                 
-            return jsonify(cached_value), 200                  
-
-    record_cache_miss()                                         
+    if not skip_cache:
+        cached = cache_service.get(cache_key)
+        if cached:
+            logger.info("Returning cached query response")
+            cached["from_cache"]     = True
+            cached["meta"]["cached"] = True
+            return jsonify(cached), 200
 
     # 3. Retrieve chunks from ChromaDB 
     try:
         chunks = chroma_client.query(question, n_results=TOP_K)
     except Exception as e:
         logger.error(f"ChromaDB query failed: {e}")
-        return jsonify({
-            "error": "Failed to retrieve documents.",
-            "code":  "CHROMA_ERROR"
-        }), 500
+        fallback = fallback_service.get_query_fallback(
+            error=f"ChromaDB error: {e}"
+        )
+        return jsonify(fallback), 200
 
-    # 4. Build context and load prompt
+    # 4. Build context and load prompt 
     context = build_context(chunks)
     try:
         prompt_template = load_prompt()
@@ -116,39 +111,31 @@ def query():
         max_tokens=500
     )
 
-    record_response_time(ai_result["response_time_ms"])        
+    record_response_time(ai_result["response_time_ms"])
 
-    # 6. Handle fallback
+    # 6. Handle fallback 
     if ai_result["is_fallback"]:
-        return jsonify({
-            "answer":       "AI service temporarily unavailable.",
-            "sources":      format_sources(chunks),
-            "chunks_used":  len(chunks),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "from_cache":   False,
-            "meta": {
-                "model_used":       "unavailable",
-                "tokens_used":      0,
-                "response_time_ms": 0,
-                "is_fallback":      True
-            }
-        }), 200
+        fallback = fallback_service.get_query_fallback(
+            error=ai_result.get("error")
+        )
+        return jsonify(fallback), 200
 
-    # 7. Build response and cache it 
+    # 7. Build result with meta 
     result = {
         "answer":       ai_result["content"],
         "sources":      format_sources(chunks),
         "chunks_used":  len(chunks),
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "from_cache":   False,                                
+        "from_cache":   False,
         "meta": {
+            "confidence":       1.0,
             "model_used":       ai_result["model_used"],
             "tokens_used":      ai_result["tokens_used"],
             "response_time_ms": ai_result["response_time_ms"],
+            "cached":           False,
             "is_fallback":      False
         }
     }
 
-    cache_service.set(cache_key, result)                        
-
+    cache_service.set(cache_key, result)
     return jsonify(result), 200

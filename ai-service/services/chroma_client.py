@@ -1,28 +1,33 @@
 import os
+
+# Force offline mode — stop HuggingFace network calls
+os.environ["TRANSFORMERS_OFFLINE"]       = "1"
+os.environ["HF_DATASETS_OFFLINE"]        = "1"
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = "./models"
+
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
-
 import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
-# Load env 
+# Load env
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path, override=True)
 
-# Logging 
+# Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s"
 )
 logger = logging.getLogger("ChromaClient")
 
-# Constants
-CHROMA_PATH       = os.getenv("CHROMA_PATH", "./chroma_data")
-COLLECTION_NAME   = os.getenv("CHROMA_COLLECTION", "risk_culture_docs")
-EMBEDDING_MODEL   = "all-MiniLM-L6-v2"   # fast, lightweight, good quality
-
+# Constants 
+CHROMA_PATH     = os.getenv("CHROMA_PATH", "./chroma_data")
+COLLECTION_NAME = os.getenv("CHROMA_COLLECTION", "risk_culture_docs")
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+MODELS_CACHE    = "./models"
 
 class ChromaClient:
     """
@@ -31,6 +36,7 @@ class ChromaClient:
     Features:
       - Persistent storage in chroma_data/ folder
       - Sentence-transformer embeddings (all-MiniLM-L6-v2)
+      - Offline mode — no HuggingFace network calls after first run
       - Add documents with metadata
       - Query top-N similar documents
       - Document count for /health endpoint
@@ -51,12 +57,18 @@ class ChromaClient:
         # Get or create collection 
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"}  # cosine similarity
+            metadata={"hnsw:space": "cosine"}
         )
 
-        # Load embedding model 
-        logger.info("Loading sentence-transformer model (first run may take a moment)...")
-        self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+        # Load embedding model from local cache
+        logger.info(
+            "Loading sentence-transformer model "
+            "(first run may take a moment)..."
+        )
+        self.embedding_model = SentenceTransformer(
+            EMBEDDING_MODEL,
+            cache_folder=MODELS_CACHE
+        )
         logger.info("ChromaDB client ready ✓")
 
     # Embed text 
@@ -65,15 +77,15 @@ class ChromaClient:
         return self.embedding_model.encode(text).tolist()
 
     # Add documents
-    def add_documents(self, documents: list[dict]) -> int:
+    def add_documents(self, documents: list) -> int:
         """
         Add a list of documents to ChromaDB.
 
         Each document must have:
             {
-                "id":       str,   # unique ID
-                "text":     str,   # content to embed
-                "metadata": dict   # optional extra info
+                "id":       str,
+                "text":     str,
+                "metadata": dict
             }
 
         Returns number of documents added.
@@ -103,8 +115,8 @@ class ChromaClient:
         logger.info(f"Added {len(documents)} documents to ChromaDB")
         return len(documents)
 
-    # Query documents
-    def query(self, query_text: str, n_results: int = 3) -> list[dict]:
+    # Query documents 
+    def query(self, query_text: str, n_results: int = 3) -> list:
         """
         Find the top-N most similar documents for a query.
 
@@ -113,12 +125,12 @@ class ChromaClient:
                 "id":       str,
                 "text":     str,
                 "metadata": dict,
-                "score":    float  # similarity score (lower = more similar in cosine)
+                "score":    float
             }
         """
         total_docs = self.count()
         if total_docs == 0:
-            logger.warning("ChromaDB collection is empty — no results to return")
+            logger.warning("ChromaDB collection is empty")
             return []
 
         # Cap n_results to available docs
@@ -132,7 +144,7 @@ class ChromaClient:
             include=["documents", "metadatas", "distances"]
         )
 
-        # Format results
+        # Format results 
         output = []
         for i in range(len(results["ids"][0])):
             output.append({
@@ -145,14 +157,14 @@ class ChromaClient:
         logger.info(f"Query returned {len(output)} results")
         return output
 
-    # Count documents
+    # Count documents 
     def count(self) -> int:
         """Return total number of documents in collection."""
         return self.collection.count()
 
-    # Delete document
+    # Delete document 
     def delete_document(self, doc_id: str) -> bool:
-        """Delete a document by ID. Returns True if successful."""
+        """Delete a document by ID."""
         try:
             self.collection.delete(ids=[doc_id])
             logger.info(f"Deleted document: {doc_id}")
@@ -161,11 +173,11 @@ class ChromaClient:
             logger.error(f"Failed to delete document {doc_id}: {e}")
             return False
 
-    # Reset collection
+    # Reset collection 
     def reset_collection(self) -> bool:
         """
         Delete and recreate the collection.
-        WARNING: This deletes ALL documents. Use only in testing.
+        WARNING: Deletes ALL documents. Use only in testing.
         """
         try:
             self.client.delete_collection(COLLECTION_NAME)
@@ -179,7 +191,5 @@ class ChromaClient:
             logger.error(f"Failed to reset collection: {e}")
             return False
 
-
-#Singleton instance 
-# Import this in your routes: from services.chroma_client import chroma_client
+# Singleton instance 
 chroma_client = ChromaClient()
