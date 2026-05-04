@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify
 from services.groq_client import groq_client
 from services.cache_service import cache_service
+from services.fallback_service import fallback_service
 from services.tracker import record_response_time
 
 logger = logging.getLogger("categorise")
@@ -145,8 +146,8 @@ def categorise():
         cached = cache_service.get(cache_key)
         if cached:
             logger.info("Returning cached categorise response")
-            cached["from_cache"]    = True
-            cached["meta"]["cached"] = True             
+            cached["from_cache"]     = True
+            cached["meta"]["cached"] = True
             return jsonify(cached), 200
 
     # 3. Load prompt 
@@ -172,42 +173,31 @@ def categorise():
 
     record_response_time(ai_result["response_time_ms"])
 
-    # 5. Handle fallback
+    # 5. Handle fallback 
     if ai_result["is_fallback"]:
-        return jsonify({
-            "category":     "Uncategorised",
-            "confidence":   0.0,
-            "reasoning":    "AI service temporarily unavailable.",
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "from_cache":   False,
-            "meta": {                                  
-                "confidence":       0.0,
-                "model_used":       "unavailable",
-                "tokens_used":      0,
-                "response_time_ms": 0,
-                "cached":           False,
-                "is_fallback":      True
-            }
-        }), 200
+        fallback = fallback_service.get_categorise_fallback(
+            error=ai_result.get("error")
+        )
+        return jsonify(fallback), 200
 
     # 6. Parse response 
     try:
         parsed = parse_ai_response(ai_result["content"])
     except (json.JSONDecodeError, ValueError, KeyError) as e:
         logger.error(f"Failed to parse AI response: {e}")
-        return jsonify({
-            "error": "Failed to parse AI response.",
-            "code":  "PARSE_ERROR"
-        }), 500
+        fallback = fallback_service.get_categorise_fallback(
+            error=f"Parse error: {e}"
+        )
+        return jsonify(fallback), 200
 
-    # 7. Build result with meta
+    # 7. Build result with meta 
     result = {
         "category":     parsed["category"],
         "confidence":   parsed["confidence"],
         "reasoning":    parsed["reasoning"],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "from_cache":   False,
-        "meta": {                                     
+        "meta": {
             "confidence":       parsed["confidence"],
             "model_used":       ai_result["model_used"],
             "tokens_used":      ai_result["tokens_used"],

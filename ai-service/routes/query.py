@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from services.groq_client import groq_client
 from services.chroma_client import chroma_client
 from services.cache_service import cache_service
+from services.fallback_service import fallback_service
 from services.tracker import record_response_time
 
 logger   = logging.getLogger("query")
@@ -69,7 +70,7 @@ def query():
             "code":  "QUESTION_TOO_LONG"
         }), 400
 
-    # 2. Check cache
+    # 2. Check cache 
     cache_key = cache_service.make_key("query", question)
 
     if not skip_cache:
@@ -77,7 +78,7 @@ def query():
         if cached:
             logger.info("Returning cached query response")
             cached["from_cache"]     = True
-            cached["meta"]["cached"] = True              
+            cached["meta"]["cached"] = True
             return jsonify(cached), 200
 
     # 3. Retrieve chunks from ChromaDB 
@@ -85,12 +86,12 @@ def query():
         chunks = chroma_client.query(question, n_results=TOP_K)
     except Exception as e:
         logger.error(f"ChromaDB query failed: {e}")
-        return jsonify({
-            "error": "Failed to retrieve documents.",
-            "code":  "CHROMA_ERROR"
-        }), 500
+        fallback = fallback_service.get_query_fallback(
+            error=f"ChromaDB error: {e}"
+        )
+        return jsonify(fallback), 200
 
-    # 4. Build context and load prompt
+    # 4. Build context and load prompt 
     context = build_context(chunks)
     try:
         prompt_template = load_prompt()
@@ -114,31 +115,20 @@ def query():
 
     # 6. Handle fallback 
     if ai_result["is_fallback"]:
-        return jsonify({
-            "answer":       "AI service temporarily unavailable.",
-            "sources":      format_sources(chunks),
-            "chunks_used":  len(chunks),
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "from_cache":   False,
-            "meta": {                                   
-                "confidence":       0.0,
-                "model_used":       "unavailable",
-                "tokens_used":      0,
-                "response_time_ms": 0,
-                "cached":           False,
-                "is_fallback":      True
-            }
-        }), 200
+        fallback = fallback_service.get_query_fallback(
+            error=ai_result.get("error")
+        )
+        return jsonify(fallback), 200
 
-    # 7. Build result with improved meta
+    # 7. Build result with meta 
     result = {
         "answer":       ai_result["content"],
         "sources":      format_sources(chunks),
         "chunks_used":  len(chunks),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "from_cache":   False,
-        "meta": {                                        
-            "confidence":       1.0,  # query confidence = 1.0 (RAG answer)
+        "meta": {
+            "confidence":       1.0,
             "model_used":       ai_result["model_used"],
             "tokens_used":      ai_result["tokens_used"],
             "response_time_ms": ai_result["response_time_ms"],

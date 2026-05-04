@@ -7,13 +7,13 @@ from flask import Blueprint, request, jsonify
 from services.groq_client import groq_client
 from services.cache_service import cache_service
 from services.job_store import job_store
+from services.fallback_service import fallback_service
 from services.tracker import record_response_time
 
 logger = logging.getLogger("generate_report")
 
 generate_report_bp = Blueprint("generate_report", __name__)
 
-# Load prompt 
 def load_prompt() -> str:
     try:
         with open(
@@ -24,7 +24,6 @@ def load_prompt() -> str:
         logger.error("generate_report_prompt.txt not found")
         raise
 
-# Parse report response 
 def parse_report(content: str) -> dict:
     """Safely parse the AI report JSON response."""
     cleaned = content.strip()
@@ -34,7 +33,6 @@ def parse_report(content: str) -> dict:
 
     parsed = json.loads(cleaned)
 
-    # Validate required fields
     required = [
         "title", "executive_summary",
         "overview", "top_items", "recommendations"
@@ -43,36 +41,29 @@ def parse_report(content: str) -> dict:
         if field not in parsed:
             raise ValueError(f"Missing field: {field}")
 
-    # Validate top_items
     if not isinstance(parsed["top_items"], list) or \
        len(parsed["top_items"]) == 0:
         raise ValueError("top_items must be a non-empty list")
 
-    # Validate recommendations
     if not isinstance(parsed["recommendations"], list) or \
        len(parsed["recommendations"]) == 0:
         raise ValueError("recommendations must be a non-empty list")
 
     return parsed
 
-# Send webhook notification 
 def send_webhook(webhook_url: str, job_id: str, status: str):
-    """
-    POST to webhook URL when job completes or fails.
-    Fails silently — webhook errors never crash the app.
-    """
+    """POST to webhook URL when job completes or fails."""
     if not webhook_url:
         return
-
     try:
         job = job_store.get_job(job_id)
         http_requests.post(
             webhook_url,
             json={
-                "job_id":  job_id,
-                "status":  status,
-                "result":  job.get("result"),
-                "error":   job.get("error")
+                "job_id": job_id,
+                "status": status,
+                "result": job.get("result"),
+                "error":  job.get("error")
             },
             timeout=10
         )
@@ -80,24 +71,23 @@ def send_webhook(webhook_url: str, job_id: str, status: str):
     except Exception as e:
         logger.warning(f"Webhook failed for job {job_id}: {e}")
 
-# Background processing function
-def process_report_job(job_id: str, survey_data: str, webhook_url: str):
+def process_report_job(
+    job_id: str, survey_data: str, webhook_url: str
+):
     """
     Runs in a background thread.
     1. Mark job as processing
     2. Call Groq to generate report
     3. Parse response
-    4. Mark job complete or failed
+    4. Mark job complete or use fallback
     5. Send webhook if configured
     """
     job_store.set_processing(job_id)
     logger.info(f"Processing report job: {job_id}")
 
     try:
-        # Load prompt
         system_prompt = load_prompt()
 
-        # Call Groq
         ai_result = groq_client.chat(
             system_prompt=system_prompt,
             user_message=(
@@ -110,18 +100,32 @@ def process_report_job(job_id: str, survey_data: str, webhook_url: str):
 
         record_response_time(ai_result["response_time_ms"])
 
+        # Handle Groq fallback 
         if ai_result["is_fallback"]:
-            job_store.set_failed(
-                job_id,
-                "AI service temporarily unavailable"
+            logger.warning(
+                f"Groq unavailable for job {job_id} — using fallback"
             )
-            send_webhook(webhook_url, job_id, "failed")
+            fallback = fallback_service.get_generate_report_fallback(
+                error=ai_result.get("error")
+            )
+            # Store as complete so frontend gets usable response
+            job_store.set_complete(job_id, fallback)
+            send_webhook(webhook_url, job_id, "complete")
             return
 
-        # Parse report
-        parsed_report = parse_report(ai_result["content"])
+        # Parse report 
+        try:
+            parsed_report = parse_report(ai_result["content"])
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Parse error for job {job_id}: {e}")
+            fallback = fallback_service.get_generate_report_fallback(
+                error=f"Parse error: {e}"
+            )
+            job_store.set_complete(job_id, fallback)
+            send_webhook(webhook_url, job_id, "complete")
+            return
 
-        # Build complete result
+        # Build complete result 
         result = {
             "report":       parsed_report,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -139,17 +143,15 @@ def process_report_job(job_id: str, survey_data: str, webhook_url: str):
         send_webhook(webhook_url, job_id, "complete")
         logger.info(f"Report job complete: {job_id}")
 
-    except (json.JSONDecodeError, ValueError) as e:
-        error_msg = f"Failed to parse AI report: {e}"
-        logger.error(f"Job {job_id} parse error: {e}")
-        job_store.set_failed(job_id, error_msg)
-        send_webhook(webhook_url, job_id, "failed")
-
     except Exception as e:
         error_msg = f"Unexpected error: {e}"
         logger.error(f"Job {job_id} unexpected error: {e}")
-        job_store.set_failed(job_id, error_msg)
-        send_webhook(webhook_url, job_id, "failed")
+        # Even on unexpected error — return fallback not failure
+        fallback = fallback_service.get_generate_report_fallback(
+            error=error_msg
+        )
+        job_store.set_complete(job_id, fallback)
+        send_webhook(webhook_url, job_id, "complete")
 
 # ===============================================================
 # ROUTES
@@ -158,24 +160,8 @@ def process_report_job(job_id: str, survey_data: str, webhook_url: str):
 def generate_report():
     """
     POST /generate-report
-    Body: {
-        "survey_data": "text of survey responses",
-        "webhook_url": "https://..." (optional)
-    }
-
     Returns job_id IMMEDIATELY — does not wait for AI.
-
-    Response:
-    {
-        "job_id":      str,
-        "status":      "pending",
-        "message":     str,
-        "poll_url":    str,
-        "created_at":  str
-    }
     """
-
-    # 1. Validate input 
     data = request.get_json(silent=True)
     if not data:
         return jsonify({
@@ -191,23 +177,21 @@ def generate_report():
             "error": "Field 'survey_data' is required",
             "code":  "MISSING_SURVEY_DATA"
         }), 400
-
     if len(survey_data) < 20:
         return jsonify({
             "error": "Field 'survey_data' must be at least 20 characters",
             "code":  "SURVEY_DATA_TOO_SHORT"
         }), 400
-
     if len(survey_data) > 10000:
         return jsonify({
             "error": "Field 'survey_data' must not exceed 10000 characters",
             "code":  "SURVEY_DATA_TOO_LONG"
         }), 400
 
-    # 2. Create job
+    # Create job 
     job_id = job_store.create_job(webhook_url=webhook_url)
 
-    # 3. Start background thread
+    # Start background thread 
     thread = threading.Thread(
         target=process_report_job,
         args=(job_id, survey_data, webhook_url),
@@ -215,9 +199,8 @@ def generate_report():
     )
     thread.start()
 
-    logger.info(f"Report job started in background: {job_id}")
+    logger.info(f"Report job started: {job_id}")
 
-    # 4. Return job_id immediately
     return jsonify({
         "job_id":     job_id,
         "status":     "pending",
@@ -236,32 +219,6 @@ def get_report_status(job_id: str):
     """
     GET /generate-report/<job_id>
     Poll this to check job status and get result when complete.
-
-    Response when pending/processing:
-    {
-        "job_id":  str,
-        "status":  "pending" | "processing",
-        "message": str
-    }
-
-    Response when complete:
-    {
-        "job_id":       str,
-        "status":       "complete",
-        "created_at":   str,
-        "completed_at": str,
-        "result": {
-            "report": {
-                "title":             str,
-                "executive_summary": str,
-                "overview":          str,
-                "top_items":         list,
-                "recommendations":   list
-            },
-            "generated_at": str,
-            "meta":         dict
-        }
-    }
     """
     job = job_store.get_job(job_id)
 
@@ -271,7 +228,7 @@ def get_report_status(job_id: str):
             "code":  "JOB_NOT_FOUND"
         }), 404
 
-    # 1. Still running
+    # Still running 
     if job["status"] in ["pending", "processing"]:
         return jsonify({
             "job_id":     job_id,
@@ -280,7 +237,7 @@ def get_report_status(job_id: str):
             "message":    "Report is being generated. Check back shortly."
         }), 202
 
-    # 2. Failed
+    # Failed 
     if job["status"] == "failed":
         return jsonify({
             "job_id":       job_id,
@@ -290,7 +247,7 @@ def get_report_status(job_id: str):
             "error":        job["error"]
         }), 500
 
-    # 3. Complete
+    # Complete 
     return jsonify({
         "job_id":       job_id,
         "status":       "complete",
@@ -299,19 +256,20 @@ def get_report_status(job_id: str):
         "result":       job["result"]
     }), 200
 
-@generate_report_bp.route("/generate-report/jobs", methods=["GET"])
+@generate_report_bp.route(
+    "/generate-report/jobs", methods=["GET"]
+)
 def list_jobs():
     """
     GET /generate-report/jobs
-    Returns all jobs with their status counts.
-    Useful for monitoring and demo.
+    Returns all jobs with stats.
     """
     jobs  = job_store.list_jobs()
     stats = job_store.count()
 
     return jsonify({
         "stats": stats,
-        "jobs":  [
+        "jobs": [
             {
                 "job_id":       j["id"],
                 "status":       j["status"],
