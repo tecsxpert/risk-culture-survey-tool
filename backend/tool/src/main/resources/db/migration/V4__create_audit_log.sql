@@ -1,7 +1,5 @@
-DROP TABLE IF EXISTS audit_log;
-
 CREATE TABLE audit_log (
-    id BIGSERIAL PRIMARY KEY,
+    id SERIAL PRIMARY KEY,
     entity_name VARCHAR(100),
     entity_id BIGINT,
     action VARCHAR(20),
