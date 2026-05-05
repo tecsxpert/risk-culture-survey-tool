@@ -6,5 +6,5 @@ CREATE TABLE audit_log (
     old_value JSONB,
     new_value JSONB,
     username VARCHAR(100),
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
