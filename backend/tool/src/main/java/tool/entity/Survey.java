@@ -1,44 +1,46 @@
 package tool.entity;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "survey")
+@Table(name = "surveys")
 public class Survey {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID) // ✅ FIX 1
+    private UUID id;
 
+    @Column(nullable = false)
     private String title;
 
     private String description;
 
-    // SOFT DELETE FIELD
-    private Boolean deleted = false;
+    @Enumerated(EnumType.STRING)
+    private Status status = Status.OPEN;
 
-    // ---------- CONSTRUCTORS ----------
+    private LocalDateTime createdAt = LocalDateTime.now();
 
+    // ✅ REQUIRED BY JPA
     public Survey() {
     }
 
-    public Survey(String title, String description) {
-        this.title = title;
-        this.description = description;
-        this.deleted = false;
-    }
+    // ---------------- GETTERS & SETTERS ----------------
 
-    // ---------- GETTERS & SETTERS ----------
-
-    public Long getId() {
+    public UUID getId() {
         return id;
     }
 
-    public void setId(Long id) {
+    public void setId(UUID id) {
         this.id = id;
     }
 
@@ -58,11 +60,19 @@ public class Survey {
         this.description = description;
     }
 
-    public Boolean getDeleted() {
-        return deleted;
+    public Status getStatus() {
+        return status;
     }
 
-    public void setDeleted(Boolean deleted) {
-        this.deleted = deleted;
+    public void setStatus(Status status) {
+        this.status = status;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
     }
 }

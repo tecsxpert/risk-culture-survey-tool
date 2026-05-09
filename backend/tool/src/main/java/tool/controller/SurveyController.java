@@ -1,68 +1,46 @@
 package tool.controller;
 
-import java.util.List;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.*;
 import tool.entity.Survey;
+import tool.entity.Status;
 import tool.service.SurveyService;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/surveys")
 public class SurveyController {
 
-    @Autowired
-    private SurveyService surveyService;
+    private final SurveyService service;
 
-    // CREATE SURVEY
+    public SurveyController(SurveyService service) {
+        this.service = service;
+    }
+
+    // CREATE
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public Survey createSurvey(@RequestBody Survey survey) {
-        return surveyService.createSurvey(survey);
+    public Survey create(@RequestBody Survey survey) {
+        return service.createSurvey(survey);
     }
 
-    // GET ALL SURVEYS
+    // UPDATE STATUS
+    @PutMapping("/{id}/status")
+    public Survey updateStatus(
+            @PathVariable UUID id,
+            @RequestParam Status status) {
+
+        return service.updateStatus(id, status);
+    }
+
+    // LIST + SEARCH + FILTER
     @GetMapping
-    public List<Survey> getAllSurveys() {
-        return surveyService.getAllSurveys();
-    }
+    public Page<Survey> list(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Status status,
+            Pageable pageable) {
 
-    // UPDATE SURVEY
-    @PutMapping("/{id}")
-    public Survey updateSurvey(
-            @PathVariable Long id,
-            @RequestBody Survey survey) {
-
-        return surveyService.updateSurvey(id, survey);
-    }
-
-    // SOFT DELETE
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteSurvey(@PathVariable Long id) {
-        surveyService.softDelete(id);
-    }
-
-    // SEARCH
-    @GetMapping("/search")
-    public List<Survey> searchSurvey(@RequestParam String q) {
-        return surveyService.searchSurvey(q);
-    }
-
-    // STATS
-    @GetMapping("/stats")
-    public long getStats() {
-        return surveyService.getSurveyStats();
+        return service.search(q, status, pageable);
     }
 }

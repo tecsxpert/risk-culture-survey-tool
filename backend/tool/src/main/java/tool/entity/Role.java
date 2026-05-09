@@ -1,27 +1,30 @@
 package tool.entity;
 
 import jakarta.persistence.*;
+import java.util.UUID;
 
 @Entity
-@Table(name = "roles")   // ✅ FIXED
+@Table(name = "roles")
 public class Role {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue
+    private UUID id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false, unique = true)
     private String name;
 
     public Role() {}
 
-    public Role(String name) {
-        this.name = name;
+    public UUID getId() {
+        return id;
     }
 
-    public Long getId() { return id; }
-    public String getName() { return name; }
+    public String getName() {
+        return name;
+    }
 
-    public void setId(Long id) { this.id = id; }
-    public void setName(String name) { this.name = name; }
+    public void setName(String name) {
+        this.name = name;
+    }
 }

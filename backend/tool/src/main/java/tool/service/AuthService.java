@@ -1,82 +1,44 @@
 package tool.service;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import tool.dto.AuthRequest;
-import tool.entity.Role;
 import tool.entity.User;
+import tool.entity.Role;
 import tool.repository.RoleRepository;
 import tool.repository.UserRepository;
-import tool.security.JwtUtil;
 
 @Service
 public class AuthService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    @Autowired
-    private RoleRepository roleRepository;
+    public AuthService(UserRepository userRepository,
+                       RoleRepository roleRepository,
+                       PasswordEncoder passwordEncoder) {
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
-    @Autowired
-    private PasswordEncoder encoder;
+    public User register(String name, String email, String password) {
 
-    @Autowired
-    private JwtUtil jwtUtil;
-
-    @Autowired
-    private CustomUserDetailsService customUserDetailsService;
-
-    // ✅ REGISTER
-    @Transactional
-    public User register(AuthRequest request) {
-
-        if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already registered");
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new RuntimeException("Email already exists");
         }
 
         User user = new User();
-        user.setName(request.getName());
-        user.setEmail(request.getEmail());
-        user.setPassword(encoder.encode(request.getPassword()));
+        user.setName(name);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(password));
 
-        Role role = roleRepository.findByName("VIEWER")
-                .orElseThrow(() -> new RuntimeException("VIEWER role not found"));
+        Role role = roleRepository.findByName("USER")
+                .orElseThrow(() -> new RuntimeException("Role not found"));
 
         user.setRole(role);
 
         return userRepository.save(user);
-    }
-
-    // ✅ LOGIN (FIXED)
-    public String login(AuthRequest request) {
-
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        if (!encoder.matches(request.getPassword(), user.getPassword())) {
-            throw new RuntimeException("Invalid password");
-        }
-
-        // convert to UserDetails (IMPORTANT FIX)
-        UserDetails userDetails =
-                customUserDetailsService.loadUserByUsername(user.getEmail());
-
-        return jwtUtil.generateToken(userDetails);
-    }
-
-    // ✅ REFRESH TOKEN (FIXED)
-    public String refreshToken(String token) {
-
-        String email = jwtUtil.extractUsername(token);
-
-        UserDetails userDetails =
-                customUserDetailsService.loadUserByUsername(email);
-
-        return jwtUtil.generateToken(userDetails);
     }
 }

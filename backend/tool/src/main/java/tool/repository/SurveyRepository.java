@@ -1,19 +1,18 @@
 package tool.repository;
 
-import java.util.List;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-
 import tool.entity.Survey;
+import tool.entity.Status;
 
-public interface SurveyRepository extends JpaRepository<Survey, Long> {
+import java.util.UUID;
 
-    // GET only active surveys
-    List<Survey> findByDeletedFalse();
+public interface SurveyRepository extends JpaRepository<Survey, UUID> {
 
-    // SEARCH
-    List<Survey> findByTitleContainingIgnoreCaseAndDeletedFalse(String title);
+    Page<Survey> findByTitleContaining(String title, Pageable pageable);
 
-    // STATS
-    long countByDeletedFalse();
+    Page<Survey> findByStatus(Status status, Pageable pageable);
+
+    Page<Survey> findByTitleContainingAndStatus(String title, Status status, Pageable pageable);
 }
