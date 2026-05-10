@@ -1,3 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Survey Management</title>
+</head>
+<body>
+
+<h2>Survey Management</h2>
+
+<h3>Create Survey</h3>
+
+<input id="title" placeholder="Title"><br><br>
+<input id="description" placeholder="Description"><br><br>
+
+<select id="status">
+    <option>OPEN</option>
+    <option>ACTIVE</option>
+    <option>CLOSED</option>
+</select><br><br>
+
+<button onclick="createSurvey()">Create</button>
+
+<hr>
+
+<h3>All Surveys</h3>
+
+<button onclick="loadSurveys()">Load Surveys</button>
+<button onclick="exportCSV()">Export CSV</button>
+
+<table border="1" id="table">
+    <tr>
+        <th>ID</th>
+        <th>Title</th>
+        <th>Status</th>
+    </tr>
+</table>
+
+<script>
+
+async function createSurvey() {
+    await fetch("http://localhost:8080/surveys", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            title: document.getElementById("title").value,
+            description: document.getElementById("description").value,
+            status: document.getElementById("status").value
+        })
+    });
+
+    alert("Survey Created");
+}
+
+async function loadSurveys() {
+    let res = await fetch("http://localhost:8080/surveys");
+    let data = await res.json();
+
+    let table = document.getElementById("table");
+
+    table.innerHTML = `
+        <tr><th>ID</th><th>Title</th><th>Status</th></tr>
+    `;
+
+    data.content.forEach(s => {
+        table.innerHTML += `
+            <tr>
+                <td>${s.id}</td>
+                <td>${s.title}</td>
+                <td>${s.status}</td>
+            </tr>
+        `;
+    });
+}
+
+function exportCSV() {
+    window.open("http://localhost:8080/export/csv");
+}
+
+</script>
+
+</body>
+</html>
+=======
 <!doctype html>
 <html lang="en">
   <head>
@@ -11,3 +94,4 @@
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+
