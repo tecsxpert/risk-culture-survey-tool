@@ -1,6 +1,5 @@
 package tool.controller;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -8,32 +7,56 @@ import tool.repository.SurveyRepository;
 import tool.entity.Survey;
 
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 
 @RestController
-@RequiredArgsConstructor
 @RequestMapping("/export")
 public class ExportController {
 
-    private final SurveyRepository repo;
+    private final SurveyRepository surveyRepository;
+
+    public ExportController(SurveyRepository surveyRepository) {
+        this.surveyRepository = surveyRepository;
+    }
 
     @GetMapping("/csv")
     public void export(HttpServletResponse response) throws Exception {
 
-        response.setContentType("text/csv");
+        // ✅ Excel-friendly headers
+        response.setContentType("text/csv; charset=UTF-8");
+        response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
-                "attachment; filename=survey.csv");
+                "attachment; filename=surveys.csv");
 
         PrintWriter writer = response.getWriter();
 
+        // ✅ CSV Header
         writer.println("ID,Title,Status");
 
-        for(Survey s : repo.findAll()){
-            writer.println(
-                s.getId()+","+
-                s.getTitle()+","+
-                s.getStatus());
+        for (Survey s : surveyRepository.findAll()) {
+
+            String id = safe(s.getId());
+            String title = safe(s.getTitle());
+            String status = safe(s.getStatus());
+
+            writer.println(id + "," + title + "," + status);
         }
 
         writer.flush();
+        writer.close();
+    }
+
+    // ✅ Safe null + Excel-safe formatting
+    private String safe(Object value) {
+        if (value == null) return "";
+
+        String str = value.toString().trim();
+
+        // Optional: prevent CSV breaking if commas exist
+        if (str.contains(",")) {
+            str = "\"" + str + "\"";
+        }
+
+        return str;
     }
 }
