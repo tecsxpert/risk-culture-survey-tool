@@ -1,0 +1,62 @@
+{
+  "timestamp": "20260506_172412",
+  "results": [
+    {
+      "endpoint": "GET /health",
+      "avg_ms": 15,
+      "min_ms": 7,
+      "max_ms": 31,
+      "is_fallback": false,
+      "status": "PASS"
+    },
+    {
+      "endpoint": "POST /categorise",
+      "avg_ms": 1132,
+      "cache_ms": 32,
+      "min_ms": 32,
+      "max_ms": 1132,
+      "is_fallback": false,
+      "category": "Leadership & Governance",
+      "confidence": 0.9,
+      "status": "PASS"
+    },
+    {
+      "endpoint": "POST /query",
+      "avg_ms": 1086,
+      "cache_ms": 22,
+      "min_ms": 22,
+      "max_ms": 1086,
+      "is_fallback": false,
+      "chunks_used": 3,
+      "status": "PASS"
+    },
+    {
+      "endpoint": "POST /generate-report",
+      "submit_ms": 32,
+      "total_ms": 3007,
+      "avg_ms": 32,
+      "min_ms": 32,
+      "max_ms": 32,
+      "is_fallback": false,
+      "final_status": "complete",
+      "status": "PASS"
+    },
+    {
+      "endpoint": "GET /generate-report/<job_id>",
+      "avg_ms": 21,
+      "min_ms": 17,
+      "max_ms": 29,
+      "is_fallback": false,
+      "status": "PASS"
+    },
+    {
+      "endpoint": "GET /generate-report/jobs",
+      "avg_ms": 25,
+      "min_ms": 25,
+      "max_ms": 25,
+      "is_fallback": false,
+      "total_jobs": 2,
+      "status": "PASS"
+    }
+  ]
+}
